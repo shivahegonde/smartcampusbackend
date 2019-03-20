@@ -322,7 +322,7 @@
 				Please click this link to activate your account:
 				http://192.168.1.101/smartcampus/otherverify.php?email='.$email.'&hash='.$hash.'';
 						
-				$headers = 'From:noreply@192.168.1.14' . "\r\n"; //setup header for mail
+				$headers = 'From:noreply@JSPMSmartCampus' . "\r\n"; //setup header for mail
 				mail($to, $subject, $message, $headers); // Send our email
 			}else{
 				return false;
@@ -456,6 +456,7 @@
 				return NULL;
 			}
 		}
+
 		
 		//check if user's data present in db using non-teaching
 		public function checkifuserexistedNonT($username){
@@ -470,20 +471,7 @@
 				return false; // user is not existed
 			}
 		}
-		
-		//check if user's nonteachid present in db non-teaching 
-		public function checkifuserexistedNonid($nonteachid){
-			$check = $this->conn->prepare("SELECT nonteachid FROM nonteacher WHERE nonteachid = ?");
-			$check->bind_param("s", $nonteachid);
-			$check->execute();
-			$check->store_result();
-			if ($check->num_rows>0) {
-				$check->close();
-				return true; // nonteachid is existed
-            }else {
-				return false; // nonteachid is not existed
-			}
-		}
+
 		
 		//send email verification for non-teaching 
 		public function sendemailverifynonT($email, $username, $password){
@@ -525,10 +513,10 @@
 				return false;
 			}
 		}
-		
+
 		/**
 		*
-		* Forgot password student
+		* Forgot password Nteacher
 		**/
 		public function forgotPasswordNT($password, $confirmpassword, $nonteachid, $username){
 			$password == $confirmpassword;
@@ -577,7 +565,208 @@
 		*
 		*
 		*/
+	
+		/*
+		*
+		* GFM SECTION
+		*
+		*
+		*/
+
+		//send email verification for GFM 
+
+
+
+		public function sendemailverifyGFM($email, $username, $password){					
+			//Fetch result 
+			$result = mysqli_query($this->conn,"SELECT gfmid FROM gfm WHERE email='".$email."'"); 
+			$hashresult = mysqli_query($this->conn,"SELECT hash FROM gfm WHERE email='".$email."'"); 
+
+			$match  = mysqli_fetch_row($result);
+			$matchs  = mysqli_fetch_row($hashresult);
+			$gfmid = $match[0]; 
+			$hash = $matchs[0];
+			if($gfmid > 0 && $hash >0){
+				$to = $email;
+				$subject = 'Signup | Verification';
+				$message = 'Thanks for signing up! Your account has been created, you can login with the following credentials after you have activated your account by pressing the url below. 
+				------------------------
+					Username: '.$username.'
+					Password: '.$password.'
+					NTID: '.$gfmid. '
+				------------------------
+				Please click this link to activate your account:
+				http://192.168.1.101/smartcampus/gfmverify.php?email='.$email.'&hash='.$hash.'';	
+				$headers = 'From:noreply@JSPMSmartCampus' . "\r\n"; //setup header for mail
+				mail($to, $subject, $message, $headers); // Send our email
+				
+			}else{
+				echo "error";
+			}
+		}
+		//email notify
+
+
+		public function sendemailnotifyGFM($username, $password){
+			
+			//Fetch result 
+			$getemail = mysqli_query($this->conn,"SELECT email FROM gfm WHERE username='".$username."'");  //query for email from user
 		
+			$match  = mysqli_fetch_row($getemail);
+			$email = $match[0]; 
+			if($email > 0){
+				$to = $getemail;
+				$subject = 'Password Changed';
+				$message = 'Your new password is...  
+				------------------------
+					Username: '.$username.'
+					Password: '.$password.'
+				------------------------
+				You can manage your credential anytime in JSPMSmartCampus app';
+				$headers = 'From:noreply@JSPMSmartCampus' . "\r\n"; //setup header for mail
+				mail($to, $subject, $message, $headers); // Send our email
+			}else{
+				echo "error";
+			}
+		}
+		
+		// return username and password from db for GFM
+		public function getuserDataGFM($username, $password, $gfmid){
+			$push = $this->conn->prepare("SELECT * FROM gfm WHERE username = ? AND gfmid = ? ");
+			$push->bind_param("ss", $username, $gfmid);
+			if ($push->execute()) {
+				$user = $push->get_result()->fetch_assoc();
+				$push->close();
+				// verifying user password
+				$salt = $user['salt'];
+				$encrypted_password = $user['encrypted_password'];
+				$hash = $this->checkhashSSHA($salt, $password);
+				// check for password equality
+				if ($encrypted_password == $hash) {
+					// user authentication details are correct
+					return $user;
+				}else{
+					return false;
+				}
+            }else {
+				return NULL;
+			}
+		}
+
+		//check if user's gfmid present in db gfm
+		public function checkifuserexistedGFM($gfmid){
+			$check = $this->conn->prepare("SELECT gfmid FROM gfm WHERE gfmid = ?");
+			$check->bind_param("s", $gfmid);
+			$check->execute();
+			$check->store_result();
+			if ($check->num_rows>0) {
+				$check->close();
+				return true; // gfmid is existed
+            }else {
+				return false; // gfmid is not existed
+			}
+		}
+		
+		//store gfm data in db with encrypted_password
+
+		public function storeUsersDataGFM($fullname, $username, $email, $password, $confirmpassword){
+			$uuid = uniqid('', true);
+			$password == $confirmpassword;
+			$hash = $this->hashSSHA($password);
+			$encrypted_password = $hash["encrypted"]; //encrypted password is stored
+			$salt = $hash["salt"]; 
+			$verify = md5(mt_rand(0,1000)); // generate random no between 0-1000 in md5
+			$gfmid = mt_rand(100,1000); //generate random no between 1000-10000 (such that user will get 4 to 5 digit)
+			$sql = "INSERT INTO gfm(unique_id, username, email, encrypted_password, salt, created_at, updated_at, hash, active, fullname, gfmid) VALUES(?, ?, ?, ?, ?, NOW(), null, ?, ?, 0, ?)"; //insert data into student table
+			//prepare query
+			if($push = $this->conn->prepare($sql)){
+				$push->bind_param("ssssssss", $uuid, $username, $email, $encrypted_password, $salt, $verify, $fullname,  $gfmid); // bind query
+				$result = $push->execute(); //finally execute.
+				$push->close(); //close
+				//check if data is stored successfully in database or not
+				if($result){
+					$push = $this->conn->prepare("SELECT * FROM gfm WHERE email = ?");
+					$push->bind_param("s", $email);
+					$push->execute();
+					$user = $push->get_result()->fetch_assoc();
+					$push->close();
+					return $user;
+				}else {
+					return false;
+				}
+			}else{
+			//error !! don't go further
+			var_dump($this->conn->error);
+			}
+			
+		}
+
+		//check if user's data present in db using gfm
+		public function checkifuserexisteGFM($username){
+			$check = $this->conn->prepare("SELECT username FROM gfm WHERE username = ?");
+			$check->bind_param("s", $username);
+			$check->execute();
+			$check->store_result();
+			if ($check->num_rows>0) {
+				$check->close(); // user is existed
+				return true;
+			}else {
+				return false; // user is not existed
+			}
+		}
+
+		//check if user's gfmid present in db gfm
+		public function checkifuserexistedGFMid($gfmid){
+			$check = $this->conn->prepare("SELECT gfmid FROM gfm WHERE gfmid = ?");
+			$check->bind_param("s", $gfmid);
+			$check->execute();
+			$check->store_result();
+			if ($check->num_rows>0) {
+				$check->close();
+				return true; // nonteachid is existed
+			}else {
+				return false; // nonteachid is not existed
+			}
+		}
+
+		//check email verified for gfm
+	
+		public function checkuseractivedGFM($username){
+			$search = mysqli_query($this->conn, "SELECT username, active FROM gfm WHERE username='".$username."' AND active='1'"); 
+			$match  = mysqli_num_rows($search);
+			if($match > 0){
+				return $search;
+			}else{
+				return false;
+			}
+		}
+
+		//Froget Password
+		public function forgotPasswordGFM($password, $confirmpassword, $gfmid, $username){
+			$password == $confirmpassword;
+			$hash = $this->hashSSHA($password); //hashing pashword for encryption
+			$encrypted_password = $hash["encrypted"]; //encrypted password is stored
+			$salt = $hash["salt"]; 
+			$sql = "UPDATE gfm SET encrypted_password= ?, salt= ? WHERE gfmid = ? AND username = ?"; //update query
+			//prepare query
+			if($push = $this->conn->prepare($sql)){
+				$push->bind_param("ssss", $encrypted_password, $salt, $gfmid, $username); // bind query
+				$result = $push->execute(); //finally execute.
+				$push->close(); //close
+			}else{
+
+			   //error !! don't go further
+			   var_dump($this->conn->error);
+			}
+		}
+
+		/*
+		*
+		* GFM SECTION ENDS
+		*
+		*
+		*/
+	
 		/*
 		*
 		* COMMON STUFF
@@ -934,6 +1123,27 @@
 				return false; // grno is not existed
 			}
 		}
+
+		public function sendMail($to, $message){
+			if($to){
+				$subject = 'Message | GFM Message';
+				$msg = 'Dear Student, As this message came from GFM please contact your GFM immediately.
+				------------------------
+				GFM Message : '.$message.'
+				------------------------
+				Thank You';
+						
+				$headers = 'From:noreply@GFM_JSPMSmartCampus' . "\r\n"; //setup header for mail
+				mail($to, $subject, $msg, $headers); // Send our email
+				return true;
+			}
+			else{
+				return false;
+			}
+		}
+		
+
+
 		
 	}
 ?>
