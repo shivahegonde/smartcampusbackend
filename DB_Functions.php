@@ -767,6 +767,208 @@
 		*
 		*/
 	
+/*
+		*
+		* ADMIN SECTION
+		*
+		*
+		*/
+
+		//send email verification for GFM 
+
+
+
+		public function sendemailverifyAdmin($email, $username, $password){					
+			//Fetch result 
+			$result = mysqli_query($this->conn,"SELECT adminid FROM admins WHERE email='".$email."'"); 
+			$hashresult = mysqli_query($this->conn,"SELECT hash FROM admins WHERE email='".$email."'"); 
+
+			$match  = mysqli_fetch_row($result);
+			$matchs  = mysqli_fetch_row($hashresult);
+			$adminid = $match[0]; 
+			$hash = $matchs[0];
+			if($gfmid > 0 && $hash >0){
+				$to = $email;
+				$subject = 'Signup | Verification';
+				$message = 'Thanks for signing up! Your account has been created, you can login with the following credentials after you have activated your account by pressing the url below. 
+				------------------------
+					Username: '.$username.'
+					Password: '.$password.'
+					NTID: '.$adminid. '
+				------------------------
+				Please click this link to activate your account:
+				http://192.168.1.101/smartcampus/gfmverify.php?email='.$email.'&hash='.$hash.'';	
+				$headers = 'From:noreply@JSPMSmartCampus' . "\r\n"; //setup header for mail
+				mail($to, $subject, $message, $headers); // Send our email
+				
+			}else{
+				echo "error";
+			}
+		}
+		//email notify
+
+
+		public function sendemailnotifyAdmin($username, $password){
+			
+			//Fetch result 
+			$getemail = mysqli_query($this->conn,"SELECT email FROM admins WHERE username='".$username."'");  //query for email from user
+		
+			$match  = mysqli_fetch_row($getemail);
+			$email = $match[0]; 
+			if($email > 0){
+				$to = $getemail;
+				$subject = 'Password Changed';
+				$message = 'Your new password is...  
+				------------------------
+					Username: '.$username.'
+					Password: '.$password.'
+				------------------------
+				You can manage your credential anytime in JSPMSmartCampus app';
+				$headers = 'From:noreply@JSPMSmartCampus' . "\r\n"; //setup header for mail
+				mail($to, $subject, $message, $headers); // Send our email
+			}else{
+				echo "error";
+			}
+		}
+		
+		// return username and password from db for Admin
+		public function getuserDataAdmin($username, $password, $adminid){
+			$push = $this->conn->prepare("SELECT * FROM admins WHERE username = ? AND adminid = ? ");
+			$push->bind_param("ss", $username, $adminid);
+			if ($push->execute()) {
+				$user = $push->get_result()->fetch_assoc();
+				$push->close();
+				// verifying user password
+				$salt = $user['salt'];
+				$encrypted_password = $user['encrypted_password'];
+				$hash = $this->checkhashSSHA($salt, $password);
+				// check for password equality
+				if ($encrypted_password == $hash) {
+					// user authentication details are correct
+					return $user;
+				}else{
+					return false;
+				}
+            }else {
+				return false;
+			}
+		}
+
+		//check if user's adminid present in db admin
+		public function checkifuserexistedAdmin($adminid){
+			$check = $this->conn->prepare("SELECT adminid FROM admins WHERE adminid = ?");
+			$check->bind_param("s", $adminid);
+			$check->execute();
+			$check->store_result();
+			if ($check->num_rows>0) {
+				$check->close();
+				return true; // Adminid is existed
+            }else {
+				return false; // Adminid is not existed
+			}
+		}
+		
+		//store Admin data in db with encrypted_password
+
+		public function storeUsersDataAdmin($fullname, $username, $email, $password, $confirmpassword){
+			$uuid = uniqid('', true);
+			$password == $confirmpassword;
+			$hash = $this->hashSSHA($password);
+			$encrypted_password = $hash["encrypted"]; //encrypted password is stored
+			$salt = $hash["salt"]; 
+			$verify = md5(mt_rand(0,1000)); // generate random no between 0-1000 in md5
+			$adminid = mt_rand(100,1000); //generate random no between 1000-10000 (such that user will get 4 to 5 digit)
+			$sql = "INSERT INTO admins(unique_id, username, email, encrypted_password, salt, created_at, updated_at, hash, active, fullname, adminid) VALUES(?, ?, ?, ?, ?, NOW(), null, ?, ?, 0, ?)"; //insert data into student table
+			//prepare query
+			if($push = $this->conn->prepare($sql)){
+				$push->bind_param("ssssssss", $uuid, $username, $email, $encrypted_password, $salt, $verify, $fullname,  $adminid); // bind query
+				$result = $push->execute(); //finally execute.
+				$push->close(); //close
+				//check if data is stored successfully in database or not
+				if($result){
+					$push = $this->conn->prepare("SELECT * FROM admins WHERE email = ?");
+					$push->bind_param("s", $email);
+					$push->execute();
+					$user = $push->get_result()->fetch_assoc();
+					$push->close();
+					return $user;
+				}else {
+					return false;
+				}
+			}else{
+			//error !! don't go further
+			var_dump($this->conn->error);
+			}
+			
+		}
+
+		//check if user's data present in db using Admin
+		public function checkifuserexisteAdmin($username){
+			$check = $this->conn->prepare("SELECT username FROM admins WHERE username = ?");
+			$check->bind_param("s", $username);
+			$check->execute();
+			$check->store_result();
+			if ($check->num_rows>0) {
+				$check->close(); // user is existed
+				return true;
+			}else {
+				return false; // user is not existed
+			}
+		}
+
+		//check if user's gfmid present in db Admin
+		public function checkifuserexistedAdminid($adminid){
+			$check = $this->conn->prepare("SELECT adminid FROM admin WHERE adminid = ?");
+			$check->bind_param("s", $adminid);
+			$check->execute();
+			$check->store_result();
+			if ($check->num_rows>0) {
+				$check->close();
+				return true; // nonteachid is existed
+			}else {
+				return false; // nonteachid is not existed
+			}
+		}
+
+		//check email verified for Admin
+	
+		public function checkuseractivedAdmin($username){
+			$search = mysqli_query($this->conn, "SELECT username, active FROM admins WHERE username='".$username."' AND active='1'"); 
+			$match  = mysqli_num_rows($search);
+			if($match > 0){
+				return $search;
+			}else{
+				return false;
+			}
+		}
+
+		//Froget Password Admin
+		public function forgotPasswordAdmin($password, $confirmpassword, $adminid, $username){
+			$password == $confirmpassword;
+			$hash = $this->hashSSHA($password); //hashing pashword for encryption
+			$encrypted_password = $hash["encrypted"]; //encrypted password is stored
+			$salt = $hash["salt"]; 
+			$sql = "UPDATE admin SET encrypted_password= ?, salt= ? WHERE adminid = ? AND username = ?"; //update query
+			//prepare query
+			if($push = $this->conn->prepare($sql)){
+				$push->bind_param("ssss", $encrypted_password, $salt, $aadminid, $username); // bind query
+				$result = $push->execute(); //finally execute.
+				$push->close(); //close
+			}else{
+
+			   //error !! don't go further
+			   var_dump($this->conn->error);
+			}
+		}
+
+		/*
+		*
+		* ADMIN SECTION ENDS
+		*
+		*
+		*/
+	
+
 		/*
 		*
 		* COMMON STUFF
